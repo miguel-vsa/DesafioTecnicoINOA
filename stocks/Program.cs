@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using Microsoft.Extensions.Configuration;
 class Program
 {
     static async Task Main(string[] args)
@@ -33,6 +34,22 @@ class Program
         Console.WriteLine($"Ativo: {asset}");
         Console.WriteLine($"Preço de venda: {sellPrice}");
         Console.WriteLine($"Preço de compra: {buyPrice}");
+
+        IConfiguration configuration = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: false)
+            .Build();
+
+        EmailConfiguration? emailConfiguration =
+            configuration
+                .GetSection("Email")
+                .Get<EmailConfiguration>();
+
+        if (emailConfiguration == null || !emailConfiguration.IsValid())
+        {
+            Console.WriteLine("Erro: configuração de e-mail inválida.");
+            return;
+        }
 
         HttpClient httpClient = new HttpClient();
 
