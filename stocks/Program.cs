@@ -5,15 +5,15 @@ class Program
     static async Task Main(string[] args)
     {
 
-        string asset = args[0];
-        decimal sellPrice;
-        decimal buyPrice;
-
         if (args.Length != 3)
         {
             Console.WriteLine("Uso: stock-quote-alert <ativo> <preço-venda> <preço-compra>");
             return;
         }
+
+        string asset = args[0];
+        decimal sellPrice;
+        decimal buyPrice;
 
         if (!decimal.TryParse(args[1], NumberStyles.Any, CultureInfo.InvariantCulture, out sellPrice) ||
             !decimal.TryParse(args[2], NumberStyles.Any, CultureInfo.InvariantCulture, out buyPrice))
@@ -55,6 +55,7 @@ class Program
         IStockQuoteService service = new StockQuoteService(httpClient);
         IEmailService emailService = new EmailService(emailConfiguration);
         AlertState state = AlertState.Normal;
+        AlertStateEvaluator evaluator = new AlertStateEvaluator();
 
         using var cancellationTokenSource = new CancellationTokenSource();
         CancellationToken cancellationToken = cancellationTokenSource.Token;
@@ -67,28 +68,23 @@ class Program
 
         try
         {
-            while (!cancellationToken.IsCancellationRequested){
+            while (!cancellationToken.IsCancellationRequested)
+            {
                 StockQuote quote = await service.GetStockQuoteAsync(asset);
-                Console.WriteLine($"Cotação atual: {quote.Price}");
-                AlertState newState;
 
-                if (quote.Price > sellPrice)
-                {
-                    newState = AlertState.Sell;
-                }
-                else if (quote.Price < buyPrice)
-                {
-                    newState = AlertState.Buy;
-                }
-                else
-                {
-                    newState = AlertState.Normal;
-                }
+                Console.WriteLine($"Cotação atual: {quote.Price}");
+
+                AlertState newState = evaluator.Evaluate(
+                    quote.Price,
+                    sellPrice,
+                    buyPrice
+                );
 
                 if (newState != state)
                 {
                     AlertState previousState = state;
                     state = newState;
+
                     switch (state)
                     {
                         case AlertState.Buy:
@@ -131,6 +127,8 @@ class Program
                                     $"Preço de compra: R$ {buyPrice:F2}\n\n" +
                                     $"A oportunidade de compra não está mais ativa."
                                 );
+
+                                Console.WriteLine("E-mail de encerramento da compra enviado.");
                             }
                             else if (previousState == AlertState.Sell)
                             {
@@ -141,11 +139,14 @@ class Program
                                     $"Preço de venda: R$ {sellPrice:F2}\n\n" +
                                     $"A oportunidade de venda não está mais ativa."
                                 );
+
+                                Console.WriteLine("E-mail de encerramento da venda enviado.");
                             }
 
                             break;
                     }
                 }
+
                 await Task.Delay(15000, cancellationToken);
             }
         }
