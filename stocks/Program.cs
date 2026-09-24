@@ -3,15 +3,16 @@ class Program
 {
     static async Task Main(string[] args)
     {
+
+        string asset = args[0];
+        decimal sellPrice;
+        decimal buyPrice;
+
         if (args.Length != 3)
         {
             Console.WriteLine("Uso: stock-quote-alert <ativo> <preço-venda> <preço-compra>");
             return;
         }
-
-        string asset = args[0];
-        decimal sellPrice;
-        decimal buyPrice;
 
         if (!decimal.TryParse(args[1], NumberStyles.Any, CultureInfo.InvariantCulture, out sellPrice) ||
             !decimal.TryParse(args[2], NumberStyles.Any, CultureInfo.InvariantCulture, out buyPrice))
@@ -35,23 +36,61 @@ class Program
 
         HttpClient httpClient = new HttpClient();
 
-        IStockQuoteService service =
-            new StockQuoteService(httpClient);
-        StockQuote quote =
-            await service.GetStockQuoteAsync(asset);
-        Console.WriteLine($"Cotação atual: {quote.Price}");
+        IStockQuoteService service = new StockQuoteService(httpClient);
+    
+        AlertState state = AlertState.Normal;
 
-        if (quote.Price > sellPrice)
+        using var cancellationTokenSource = new CancellationTokenSource();
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+        Console.CancelKeyPress += (sender, e) =>
         {
-            Console.WriteLine("Alerta: Cotação acima do preço de venda.");
+            e.Cancel = true;
+            cancellationTokenSource.Cancel();
+        };
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested){
+                StockQuote quote = await service.GetStockQuoteAsync(asset);
+                Console.WriteLine($"Cotação atual: {quote.Price}");
+                AlertState newState;
+
+                if (quote.Price > sellPrice)
+                {
+                    newState = AlertState.Sell;
+                }
+                else if (quote.Price < buyPrice)
+                {
+                    newState = AlertState.Buy;
+                }
+                else
+                {
+                    newState = AlertState.Normal;
+                }
+
+                if (newState != state)
+                {
+                    state = newState;
+                    switch (state)
+                    {
+                        case AlertState.Buy:
+                            Console.WriteLine("Alerta: Cotação abaixo do preço de compra.");
+                            break;
+                        case AlertState.Sell:
+                            Console.WriteLine("Alerta: Cotação acima do preço de venda.");
+                            break;
+                        case AlertState.Normal:
+                            Console.WriteLine("Cotação voltou para a faixa normal.");
+                            break;
+                    }
+                }
+                await Task.Delay(15000, cancellationToken);
+            }
         }
-        else if (quote.Price < buyPrice)
+        catch (OperationCanceledException)
         {
-            Console.WriteLine("Alerta: Cotação abaixo do preço de compra.");
-        }
-        else
-        {
-            Console.WriteLine("Preço dentro da faixa de monitoramento.");
+            Console.WriteLine("Monitoramento encerrado."); 
         }
     }
 }
